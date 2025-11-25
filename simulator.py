@@ -11,11 +11,20 @@ from controller import lower_controller, controller
 
 class Simulator:
 
-    def __init__(self, rt : RaceTrack):
+    def __init__(self, rt : RaceTrack, raceline_path : str = None):
         matplotlib.rcParams["figure.dpi"] = 300
         matplotlib.rcParams["font.size"] = 8
 
         self.rt = rt
+        
+        # Load raceline if provided
+        if raceline_path is not None:
+            raceline_data = np.loadtxt(raceline_path, comments="#", delimiter=",")
+            self.raceline = raceline_data[:, 0:2]
+        else:
+            # If no raceline, use centerline
+            self.raceline = rt.centerline
+            
         self.figure, self.axis = plt.subplots(1, 1)
 
         self.axis.set_xlabel("X"); self.axis.set_ylabel("Y")
@@ -74,11 +83,14 @@ class Simulator:
             self.axis.cla()
 
             self.rt.plot_track(self.axis)
+            
+            # Plot raceline
+            self.axis.plot(self.raceline[:, 0], self.raceline[:, 1], 'r-', linewidth=0.5, alpha=0.7)
 
             self.axis.set_xlim(self.car.state[0] - 200, self.car.state[0] + 200)
             self.axis.set_ylim(self.car.state[1] - 200, self.car.state[1] + 200)
 
-            desired = controller(self.car.state, self.car.parameters, self.rt)
+            desired = controller(self.car.state, self.car.parameters, self.rt, self.raceline)
             cont = lower_controller(self.car.state, desired, self.car.parameters)
             self.car.update(cont)
             self.update_status()
@@ -115,12 +127,14 @@ class Simulator:
             exit()
 
     def update_status(self):
-        progress = np.linalg.norm(self.car.state[0:2] - self.rt.centerline[0, 0:2], 2)
+        # Check distance to raceline start point, not centerline
+        start_point = self.raceline[0, 0:2]
+        progress = np.linalg.norm(self.car.state[0:2] - start_point, 2)
 
-        if progress > 10.0 and not self.lap_started:
+        if progress > 20.0 and not self.lap_started:
             self.lap_started = True
     
-        if progress <= 1.0 and self.lap_started and not self.lap_finished:
+        if progress <= 15.0 and self.lap_started and not self.lap_finished:
             self.lap_finished = True
             self.lap_time_elapsed = time() - self.lap_start_time
 
@@ -128,7 +142,7 @@ class Simulator:
             self.lap_time_elapsed = time() - self.lap_start_time
 
     def start(self):
-        # Run the simulation loop every 1 millisecond.
+        # Run the simulation loop every 1 second.
         self.timer = self.figure.canvas.new_timer(interval=1)
         self.timer.add_callback(self.run)
         self.lap_start_time = time()
